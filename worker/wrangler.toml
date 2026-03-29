@@ -5,7 +5,7 @@ compatibility_date = "2025-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "nasty-telemetry"
-database_id = "" # Set after `wrangler d1 create nasty-telemetry`
+database_id = "1f8b1d7c-ce51-44e8-b106-b9af1765318a"
 
 [triggers]
 crons = ["0 3 * * *"] # Daily cleanup at 03:00 UTC
