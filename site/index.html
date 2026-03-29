@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NASty Telemetry</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      padding: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+    .subtitle { color: #888; margin-bottom: 2rem; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: #1a1d27;
+      border: 1px solid #2a2d37;
+      border-radius: 8px;
+      padding: 1.2rem;
+    }
+    .stat-card .label { color: #888; font-size: 0.85rem; text-transform: uppercase; }
+    .stat-card .value { font-size: 2rem; font-weight: 700; margin-top: 0.3rem; }
+    .chart-container {
+      background: #1a1d27;
+      border: 1px solid #2a2d37;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .chart-container h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .loading { color: #666; text-align: center; padding: 4rem; }
+    .error { color: #ef4444; text-align: center; padding: 4rem; }
+    canvas { max-height: 300px; }
+  </style>
+</head>
+<body>
+  <h1>NASty Telemetry</h1>
+  <p class="subtitle">Anonymous, aggregated usage statistics from NASty instances</p>
+
+  <div id="content" class="loading">Loading...</div>
+
+  <script>
+    const API_BASE = '/api';
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+    }
+
+    const chartDefaults = {
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: '#2a2d37' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#2a2d37' }, beginAtZero: true },
+      },
+      plugins: { legend: { display: false } },
+    };
+
+    function makeChart(canvasId, labels, data, color, yFormat) {
+      const opts = structuredClone(chartDefaults);
+      if (yFormat) {
+        opts.scales.y.ticks.callback = yFormat;
+      }
+      new Chart(document.getElementById(canvasId), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            borderColor: color,
+            backgroundColor: color + '20',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2,
+          }],
+        },
+        options: opts,
+      });
+    }
+
+    async function load() {
+      try {
+        const res = await fetch(`${API_BASE}/stats`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { days } = await res.json();
+
+        if (!days || days.length === 0) {
+          document.getElementById('content').innerHTML = '<p class="loading">No data yet. Check back once NASty instances start reporting.</p>';
+          return;
+        }
+
+        const latest = days[days.length - 1];
+        const labels = days.map(d => d.day);
+
+        document.getElementById('content').innerHTML = `
+          <div class="stats">
+            <div class="stat-card">
+              <div class="label">Active Instances</div>
+              <div class="value">${latest.instances}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Total Drives</div>
+              <div class="value">${latest.drives}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Total Storage</div>
+              <div class="value">${formatBytes(latest.total_bytes)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Used Storage</div>
+              <div class="value">${formatBytes(latest.used_bytes)}</div>
+            </div>
+          </div>
+
+          <div class="chart-container">
+            <h2>Active Instances</h2>
+            <canvas id="chart-instances"></canvas>
+          </div>
+
+          <div class="chart-container">
+            <h2>Total Drives</h2>
+            <canvas id="chart-drives"></canvas>
+          </div>
+
+          <div class="chart-container">
+            <h2>Storage Managed</h2>
+            <canvas id="chart-storage"></canvas>
+          </div>
+        `;
+
+        makeChart('chart-instances', labels, days.map(d => d.instances), '#6366f1');
+        makeChart('chart-drives', labels, days.map(d => d.drives), '#22c55e');
+        makeChart('chart-storage', labels, days.map(d => d.total_bytes), '#f59e0b', v => formatBytes(v));
+      } catch (err) {
+        document.getElementById('content').innerHTML = `<p class="error">Failed to load data: ${err.message}</p>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

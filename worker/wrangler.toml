@@ -1,0 +1,11 @@
+name = "nasty-telemetry"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nasty-telemetry"
+database_id = "" # Set after `wrangler d1 create nasty-telemetry`
+
+[triggers]
+crons = ["0 3 * * *"] # Daily cleanup at 03:00 UTC
