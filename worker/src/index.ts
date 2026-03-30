@@ -59,39 +59,68 @@ async function handleReport(request: Request, env: Env): Promise<Response> {
 	return json({ ok: true });
 }
 
+interface Row {
+	instance_id: string;
+	reported_at: string;
+	drives: number;
+	total_bytes: number;
+	used_bytes: number;
+}
+
 async function handleStats(env: Env): Promise<Response> {
-	// Active instances: only those that reported within the last 3 days
-	const activeInstances = await env.DB.prepare(
-		`SELECT instance_id FROM telemetry WHERE reported_at >= date('now', '-3 days') GROUP BY instance_id`
-	).all();
+	// Get all reports from active instances (reported within last 3 days)
+	// Include their full history for the chart (last 90 days)
+	const rows = await env.DB.prepare(
+		`SELECT instance_id, reported_at, drives, total_bytes, used_bytes
+		 FROM telemetry
+		 WHERE instance_id IN (
+		   SELECT instance_id FROM telemetry WHERE reported_at >= date('now', '-3 days')
+		 )
+		 AND reported_at >= date('now', '-90 days')
+		 ORDER BY reported_at`
+	).all<Row>();
 
-	const activeIds = activeInstances.results.map((r) => r.instance_id as string);
-
-	if (activeIds.length === 0) {
+	if (rows.results.length === 0) {
 		return json({ days: [] }, 200);
 	}
 
-	// Time-series for active instances (last 90 days)
-	const placeholders = activeIds.map(() => "?").join(",");
-	const timeseries = await env.DB.prepare(
-		`SELECT reported_at as day,
-		        COUNT(DISTINCT instance_id) as instances,
-		        SUM(drives) as drives,
-		        SUM(total_bytes) as total_bytes,
-		        SUM(used_bytes) as used_bytes
-		 FROM telemetry
-		 WHERE instance_id IN (${placeholders})
-		   AND reported_at >= date('now', '-90 days')
-		 GROUP BY reported_at
-		 ORDER BY reported_at`
-	)
-		.bind(...activeIds)
-		.all();
+	// Collect all unique days
+	const allDays = [...new Set(rows.results.map((r) => r.reported_at))].sort();
 
-	return json(
-		{ days: timeseries.results },
-		200,
-	);
+	// For each day, use the instance's report for that day, or carry forward
+	// its most recent previous report. This avoids dips when instances
+	// haven't reported yet today due to random jitter.
+	const lastSeen = new Map<string, Row>();
+	const days = allDays.map((day) => {
+		// Update lastSeen with any reports from this day
+		for (const r of rows.results) {
+			if (r.reported_at === day) {
+				lastSeen.set(r.instance_id, r);
+			}
+		}
+
+		// Aggregate from all instances last seen within 3 days of this day
+		let instances = 0;
+		let drives = 0;
+		let total_bytes = 0;
+		let used_bytes = 0;
+
+		for (const [, r] of lastSeen) {
+			// Only count if last report is within 3 days of this day
+			const dayMs = new Date(day).getTime();
+			const reportMs = new Date(r.reported_at).getTime();
+			if (dayMs - reportMs <= 3 * 86400000) {
+				instances++;
+				drives += r.drives;
+				total_bytes += r.total_bytes;
+				used_bytes += r.used_bytes;
+			}
+		}
+
+		return { day, instances, drives, total_bytes, used_bytes };
+	});
+
+	return json({ days }, 200);
 }
 
 async function handleCleanup(env: Env): Promise<void> {
