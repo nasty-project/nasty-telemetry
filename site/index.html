@@ -15,8 +15,22 @@
       max-width: 1200px;
       margin: 0 auto;
     }
-    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
-    .subtitle { color: #888; margin-bottom: 2rem; }
+    .header {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .header img { height: 5rem; }
+    .header-text { padding-top: 0.3rem; }
+    .header-text .subtitle {
+      color: #888;
+      font-size: 0.9rem;
+      margin-top: 0.3rem;
+    }
+    .header-text .subtitle a { color: #818cf8; text-decoration: none; }
+    .header-text .subtitle a:hover { text-decoration: underline; }
+    h1 { font-size: 1.8rem; }
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -26,32 +40,63 @@
     .stat-card {
       background: #1a1d27;
       border: 1px solid #2a2d37;
-      border-radius: 8px;
-      padding: 1.2rem;
+      border-radius: 10px;
+      padding: 1.4rem;
+      text-align: center;
     }
-    .stat-card .label { color: #888; font-size: 0.85rem; text-transform: uppercase; }
-    .stat-card .value { font-size: 2rem; font-weight: 700; margin-top: 0.3rem; }
+    .stat-card .label {
+      color: #666;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat-card .value {
+      font-size: 2.2rem;
+      font-weight: 700;
+      margin-top: 0.4rem;
+      background: linear-gradient(135deg, #e0e0e0 0%, #a0a0a0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 768px) {
+      .charts { grid-template-columns: 1fr; }
+    }
     .chart-container {
       background: #1a1d27;
       border: 1px solid #2a2d37;
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 1.5rem;
-      margin-bottom: 1.5rem;
     }
-    .chart-container h2 { font-size: 1.1rem; margin-bottom: 1rem; }
-    .loading { color: #666; text-align: center; padding: 4rem; }
+    .chart-container.full { grid-column: 1 / -1; }
+    .chart-container h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .loading { color: #555; text-align: center; padding: 4rem; font-size: 0.95rem; }
     .error { color: #ef4444; text-align: center; padding: 4rem; }
-    canvas { max-height: 300px; }
+    canvas { max-height: 220px; }
   </style>
 </head>
 <body>
-  <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+  <div class="header">
     <a href="https://github.com/nasty-project">
-      <img src="logo.svg" alt="NASty" style="height: 3rem;" />
+      <img src="logo.svg" alt="NASty" />
     </a>
-    <h1 style="margin: 0;">Telemetry</h1>
+    <div class="header-text">
+      <p class="subtitle">Anonymous, aggregated usage statistics from <a href="https://github.com/nasty-project">NASty</a> instances</p>
+      <h1>Telemetry</h1>
+    </div>
   </div>
-  <p class="subtitle">Anonymous, aggregated usage statistics from <a href="https://github.com/nasty-project" style="color: #6366f1; text-decoration: none;">NASty</a> instances</p>
 
   <div id="content" class="loading">Loading...</div>
 
@@ -65,35 +110,72 @@
       return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
     }
 
-    const chartDefaults = {
-      responsive: true,
-      maintainAspectRatio: true,
-      scales: {
-        x: { ticks: { color: '#888' }, grid: { color: '#2a2d37' } },
-        y: { ticks: { color: '#888' }, grid: { color: '#2a2d37' }, beginAtZero: true },
-      },
-      plugins: { legend: { display: false } },
-    };
+    function makeChart(canvasId, labels, data, color, opts = {}) {
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+      gradient.addColorStop(0, color + '40');
+      gradient.addColorStop(1, color + '00');
 
-    function makeChart(canvasId, labels, data, color, yFormat) {
-      const opts = structuredClone(chartDefaults);
-      if (yFormat) {
-        opts.scales.y.ticks.callback = yFormat;
-      }
-      new Chart(document.getElementById(canvasId), {
-        type: 'line',
+      const isInteger = data.every(v => Number.isInteger(v));
+      const maxVal = Math.max(...data);
+
+      new Chart(ctx, {
+        type: opts.type || 'line',
         data: {
           labels,
           datasets: [{
             data,
             borderColor: color,
-            backgroundColor: color + '20',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 2,
+            backgroundColor: opts.type === 'bar' ? color + '80' : gradient,
+            borderWidth: opts.type === 'bar' ? 0 : 2.5,
+            fill: opts.type !== 'bar',
+            tension: 0,
+            pointRadius: opts.type === 'bar' ? 0 : 4,
+            pointBackgroundColor: color,
+            pointBorderColor: '#1a1d27',
+            pointBorderWidth: 2,
+            pointHoverRadius: 6,
+            borderRadius: opts.type === 'bar' ? 4 : 0,
           }],
         },
-        options: opts,
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          interaction: { intersect: false, mode: 'index' },
+          scales: {
+            x: {
+              ticks: { color: '#555', font: { size: 11 } },
+              grid: { color: '#1f2230' },
+              border: { color: '#2a2d37' },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: {
+                color: '#555',
+                font: { size: 11 },
+                callback: opts.yFormat || (v => isInteger ? (Number.isInteger(v) ? v : '') : v),
+                maxTicksLimit: 6,
+              },
+              grid: { color: '#1f2230' },
+              border: { color: '#2a2d37' },
+              suggestedMax: isInteger ? maxVal + 1 : undefined,
+            },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1a1d27',
+              borderColor: '#2a2d37',
+              borderWidth: 1,
+              titleColor: '#888',
+              bodyColor: '#e0e0e0',
+              bodyFont: { weight: '600' },
+              padding: 10,
+              displayColors: false,
+              callbacks: opts.yFormat ? { label: (c) => opts.yFormat(c.parsed.y) } : {},
+            },
+          },
+        },
       });
     }
 
@@ -131,25 +213,27 @@
             </div>
           </div>
 
-          <div class="chart-container">
-            <h2>Active Instances</h2>
-            <canvas id="chart-instances"></canvas>
-          </div>
+          <div class="charts">
+            <div class="chart-container">
+              <h2>Active Instances</h2>
+              <canvas id="chart-instances"></canvas>
+            </div>
 
-          <div class="chart-container">
-            <h2>Total Drives</h2>
-            <canvas id="chart-drives"></canvas>
-          </div>
+            <div class="chart-container">
+              <h2>Total Drives</h2>
+              <canvas id="chart-drives"></canvas>
+            </div>
 
-          <div class="chart-container">
-            <h2>Storage Managed</h2>
-            <canvas id="chart-storage"></canvas>
+            <div class="chart-container full">
+              <h2>Storage Managed</h2>
+              <canvas id="chart-storage"></canvas>
+            </div>
           </div>
         `;
 
-        makeChart('chart-instances', labels, days.map(d => d.instances), '#6366f1');
-        makeChart('chart-drives', labels, days.map(d => d.drives), '#22c55e');
-        makeChart('chart-storage', labels, days.map(d => d.total_bytes), '#f59e0b', v => formatBytes(v));
+        makeChart('chart-instances', labels, days.map(d => d.instances), '#818cf8', { type: 'bar' });
+        makeChart('chart-drives', labels, days.map(d => d.drives), '#34d399', { type: 'bar' });
+        makeChart('chart-storage', labels, days.map(d => d.total_bytes), '#fbbf24', { yFormat: v => formatBytes(v) });
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="error">Failed to load data: ${err.message}</p>`;
       }
