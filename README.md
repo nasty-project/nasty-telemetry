@@ -1,12 +1,10 @@
 # NASty Telemetry
 
-Anonymous, opt-in telemetry for the [NASty](https://github.com/nasty-project/nasty) NAS appliance. Helps us understand how NASty is used in the real world — how many drives, how much storage, how many instances.
+Anonymous telemetry for the [NASty](https://github.com/nasty-project/nasty) NAS appliance. Enabled by default, can be disabled from the WebUI. Helps us understand how NASty is used in the real world — how many drives, how much storage, how many instances.
 
 ## Dashboard
 
-**[https://nasty-telemetry.nasty-project.workers.dev/api/stats](https://nasty-telemetry.nasty-project.workers.dev/api/stats)** — raw JSON stats
-
-The visual dashboard is served from `site/index.html` via Cloudflare Pages.
+**[https://nasty-telemetry.pages.dev/](https://nasty-telemetry.pages.dev/)**
 
 ## What is collected
 
