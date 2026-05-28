@@ -15,7 +15,12 @@ Every 24 hours (with random jitter), each NASty instance sends a single JSON pay
   "instance_id": "a1b2c3d4-...",
   "drives": 3,
   "total_bytes": 6000000000000,
-  "used_bytes": 1500000000000
+  "used_bytes": 1500000000000,
+  "version": "0.0.3",
+  "commit": "a1b2c3d",
+  "vms": 2,
+  "apps": 5,
+  "arch": "x86_64"
 }
 ```
 
@@ -25,6 +30,11 @@ Every 24 hours (with random jitter), each NASty instance sends a single JSON pay
 | `drives` | Total number of block devices across all mounted bcachefs filesystems. |
 | `total_bytes` | Total storage capacity across all mounted filesystems. |
 | `used_bytes` | Total storage used across all mounted filesystems. |
+| `version` | NASty engine semver (`CARGO_PKG_VERSION` at build time). |
+| `commit` | Short git SHA the engine was built from. Omitted for dev cargo builds. |
+| `vms` | Total number of configured VMs (running + stopped). |
+| `apps` | Total number of installed apps. |
+| `arch` | CPU architecture — `x86_64` or `aarch64`. |
 
 **That's it.** No hostnames, no IP addresses, no file names, no user data, no hardware identifiers.
 
@@ -41,6 +51,11 @@ struct Report {
     drives: usize,
     total_bytes: u64,
     used_bytes: u64,
+    version: &'static str,
+    commit: Option<String>,
+    vms: usize,
+    apps: usize,
+    arch: &'static str,
 }
 ```
 
