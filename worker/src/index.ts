@@ -7,15 +7,43 @@ interface ReportPayload {
 	drives: number;
 	total_bytes: number;
 	used_bytes: number;
+	version?: string;
+	commit?: string;
+	vms?: number;
+	apps?: number;
+	arch?: string;
 }
+
+const ALLOWED_ARCHES = new Set(["x86_64", "aarch64"]);
 
 function isValidUUID(s: string): boolean {
 	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
+function isValidVersion(s: unknown): s is string {
+	return typeof s === "string" && s.length > 0 && s.length <= 32 && /^[0-9a-zA-Z.+\-]+$/.test(s);
+}
+
+function isValidCommit(s: unknown): s is string {
+	return typeof s === "string" && /^[0-9a-f]{4,40}$/i.test(s);
+}
+
+function isValidCount(n: unknown, max: number): n is number {
+	return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= max;
+}
+
+function isValidArch(s: unknown): s is string {
+	return typeof s === "string" && ALLOWED_ARCHES.has(s);
+}
+
 function isValidPayload(body: unknown): body is ReportPayload {
 	if (typeof body !== "object" || body === null) return false;
 	const b = body as Record<string, unknown>;
+	if (b.version !== undefined && !isValidVersion(b.version)) return false;
+	if (b.commit !== undefined && !isValidCommit(b.commit)) return false;
+	if (b.vms !== undefined && !isValidCount(b.vms, 10000)) return false;
+	if (b.apps !== undefined && !isValidCount(b.apps, 10000)) return false;
+	if (b.arch !== undefined && !isValidArch(b.arch)) return false;
 	return (
 		typeof b.instance_id === "string" &&
 		isValidUUID(b.instance_id) &&
@@ -50,10 +78,20 @@ async function handleReport(request: Request, env: Env): Promise<Response> {
 	}
 
 	await env.DB.prepare(
-		`INSERT OR REPLACE INTO telemetry (instance_id, reported_at, drives, total_bytes, used_bytes)
-		 VALUES (?, date('now'), ?, ?, ?)`
+		`INSERT OR REPLACE INTO telemetry (instance_id, reported_at, drives, total_bytes, used_bytes, version, commit_sha, vms, apps, arch)
+		 VALUES (?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?)`
 	)
-		.bind(body.instance_id, body.drives, body.total_bytes, body.used_bytes)
+		.bind(
+			body.instance_id,
+			body.drives,
+			body.total_bytes,
+			body.used_bytes,
+			body.version ?? null,
+			body.commit ?? null,
+			body.vms ?? null,
+			body.apps ?? null,
+			body.arch ?? null,
+		)
 		.run();
 
 	return json({ ok: true });
@@ -65,13 +103,18 @@ interface Row {
 	drives: number;
 	total_bytes: number;
 	used_bytes: number;
+	version: string | null;
+	commit_sha: string | null;
+	vms: number | null;
+	apps: number | null;
+	arch: string | null;
 }
 
 async function handleStats(env: Env): Promise<Response> {
 	// Get all reports from active instances (reported within last 3 days)
 	// Include their full history for the chart (last 90 days)
 	const rows = await env.DB.prepare(
-		`SELECT instance_id, reported_at, drives, total_bytes, used_bytes
+		`SELECT instance_id, reported_at, drives, total_bytes, used_bytes, version, commit_sha, vms, apps, arch
 		 FROM telemetry
 		 WHERE instance_id IN (
 		   SELECT instance_id FROM telemetry WHERE reported_at >= date('now', '-3 days')
@@ -81,7 +124,7 @@ async function handleStats(env: Env): Promise<Response> {
 	).all<Row>();
 
 	if (rows.results.length === 0) {
-		return json({ days: [] }, 200);
+		return json({ days: [], latest: { versions: [], arches: [] } }, 200);
 	}
 
 	// Collect all unique days
@@ -104,6 +147,8 @@ async function handleStats(env: Env): Promise<Response> {
 		let drives = 0;
 		let total_bytes = 0;
 		let used_bytes = 0;
+		let vms = 0;
+		let apps = 0;
 
 		for (const [, r] of lastSeen) {
 			// Only count if last report is within 3 days of this day
@@ -114,13 +159,42 @@ async function handleStats(env: Env): Promise<Response> {
 				drives += r.drives;
 				total_bytes += r.total_bytes;
 				used_bytes += r.used_bytes;
+				vms += r.vms ?? 0;
+				apps += r.apps ?? 0;
 			}
 		}
 
-		return { day, instances, drives, total_bytes, used_bytes };
+		return { day, instances, drives, total_bytes, used_bytes, vms, apps };
 	});
 
-	return json({ days }, 200);
+	// Build breakdowns from the final-day lastSeen snapshot. Same 3-day
+	// staleness gate as the per-day aggregates so we agree with the "Active
+	// Instances" stat card.
+	const finalDay = allDays[allDays.length - 1];
+	const finalDayMs = new Date(finalDay).getTime();
+	const versionCounts = new Map<string, number>();
+	const archCounts = new Map<string, number>();
+	for (const [, r] of lastSeen) {
+		const reportMs = new Date(r.reported_at).getTime();
+		if (finalDayMs - reportMs > 3 * 86400000) continue;
+		// Group commits under their semver. "+" indicates "0.0.3 family,
+		// exact commit may vary" — see dashboard for rendering.
+		const versionLabel = r.version ? `${r.version}+` : "unknown";
+		versionCounts.set(versionLabel, (versionCounts.get(versionLabel) ?? 0) + 1);
+		const archLabel = r.arch ?? "unknown";
+		archCounts.set(archLabel, (archCounts.get(archLabel) ?? 0) + 1);
+	}
+
+	const sortDesc = (a: [string, number], b: [string, number]) =>
+		b[1] - a[1] || a[0].localeCompare(b[0]);
+	const versions = [...versionCounts.entries()]
+		.sort(sortDesc)
+		.map(([version, instances]) => ({ version, instances }));
+	const arches = [...archCounts.entries()]
+		.sort(sortDesc)
+		.map(([arch, instances]) => ({ arch, instances }));
+
+	return json({ days, latest: { versions, arches } }, 200);
 }
 
 export default {

@@ -86,6 +86,40 @@
     .loading { color: #555; text-align: center; padding: 4rem; font-size: 0.95rem; }
     .error { color: #ef4444; text-align: center; padding: 4rem; }
     canvas { max-height: 220px; }
+    .breakdown {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 768px) {
+      .breakdown { grid-template-columns: 1fr; }
+    }
+    .bar-list { display: flex; flex-direction: column; gap: 0.6rem; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 6rem 1fr 3rem;
+      align-items: center;
+      gap: 0.7rem;
+      font-size: 0.9rem;
+    }
+    .bar-row .name { color: #ccc; font-variant-numeric: tabular-nums; }
+    .bar-row .bar {
+      height: 0.6rem;
+      background: #2a2d37;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar-row .bar > div {
+      height: 100%;
+      background: linear-gradient(90deg, #818cf8 0%, #c4b5fd 100%);
+      border-radius: 999px;
+    }
+    .bar-row .count {
+      color: #888;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
   </style>
 </head>
 <body>
@@ -178,11 +212,30 @@
       });
     }
 
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    function renderBarList(entries, keyName) {
+      if (!entries || entries.length === 0) return '<p class="loading" style="padding:1rem;">No data yet.</p>';
+      const max = Math.max(...entries.map(e => e.instances));
+      return `<div class="bar-list">${entries.map(e => {
+        const pct = max > 0 ? (e.instances / max) * 100 : 0;
+        return `
+          <div class="bar-row">
+            <span class="name">${escapeHtml(e[keyName])}</span>
+            <span class="bar"><div style="width:${pct}%"></div></span>
+            <span class="count">${e.instances}</span>
+          </div>
+        `;
+      }).join('')}</div>`;
+    }
+
     async function load() {
       try {
         const res = await fetch(`${API_BASE}/stats`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { days } = await res.json();
+        const { days, latest: latestBreakdown } = await res.json();
 
         if (!days || days.length === 0) {
           document.getElementById('content').innerHTML = '<p class="loading">No data yet. Check back once NASty instances start reporting.</p>';
@@ -191,6 +244,8 @@
 
         const latest = days[days.length - 1];
         const labels = days.map(d => d.day);
+        const versions = latestBreakdown?.versions ?? [];
+        const arches = latestBreakdown?.arches ?? [];
 
         document.getElementById('content').innerHTML = `
           <div class="stats">
@@ -210,6 +265,14 @@
               <div class="label">Used Storage</div>
               <div class="value">${formatBytes(latest.used_bytes)}</div>
             </div>
+            <div class="stat-card">
+              <div class="label">Total VMs</div>
+              <div class="value">${latest.vms ?? 0}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Total Apps</div>
+              <div class="value">${latest.apps ?? 0}</div>
+            </div>
           </div>
 
           <div class="charts">
@@ -226,6 +289,17 @@
             <div class="chart-container full">
               <h2>Storage Managed</h2>
               <canvas id="chart-storage"></canvas>
+            </div>
+          </div>
+
+          <div class="breakdown">
+            <div class="chart-container">
+              <h2>Versions (active instances)</h2>
+              ${renderBarList(versions, 'version')}
+            </div>
+            <div class="chart-container">
+              <h2>Architecture</h2>
+              ${renderBarList(arches, 'arch')}
             </div>
           </div>
         `;
