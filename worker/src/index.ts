@@ -123,16 +123,6 @@ async function handleStats(env: Env): Promise<Response> {
 	return json({ days }, 200);
 }
 
-async function handleCleanup(env: Env): Promise<void> {
-	// Purge data for instances that haven't reported in 30 days
-	await env.DB.prepare(
-		`DELETE FROM telemetry
-		 WHERE instance_id NOT IN (
-		   SELECT instance_id FROM telemetry WHERE reported_at >= date('now', '-30 days')
-		 )`
-	).run();
-}
-
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
@@ -150,9 +140,5 @@ export default {
 		}
 
 		return json({ error: "not found" }, 404);
-	},
-
-	async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
-		await handleCleanup(env);
 	},
 } satisfies ExportedHandler<Env>;
