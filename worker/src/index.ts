@@ -7,11 +7,17 @@ interface ReportPayload {
 	drives: number;
 	total_bytes: number;
 	used_bytes: number;
-	version?: string;
+	// version + arch are required: the NASty engine populates them
+	// from `env!("CARGO_PKG_VERSION")` and `std::env::consts::ARCH`
+	// at compile time, so a real engine never omits them. A POST
+	// without these fields is a probe / curl test / non-NASty client
+	// — accepting it would let an outsider pollute the dashboard
+	// with "unknown" instances.
+	version: string;
+	arch: string;
 	commit?: string;
 	vms?: number;
 	apps?: number;
-	arch?: string;
 }
 
 const ALLOWED_ARCHES = new Set(["x86_64", "aarch64"]);
@@ -39,11 +45,12 @@ function isValidArch(s: unknown): s is string {
 function isValidPayload(body: unknown): body is ReportPayload {
 	if (typeof body !== "object" || body === null) return false;
 	const b = body as Record<string, unknown>;
-	if (b.version !== undefined && !isValidVersion(b.version)) return false;
+	// version + arch are required (see ReportPayload).
+	if (!isValidVersion(b.version)) return false;
+	if (!isValidArch(b.arch)) return false;
 	if (b.commit !== undefined && !isValidCommit(b.commit)) return false;
 	if (b.vms !== undefined && !isValidCount(b.vms, 10000)) return false;
 	if (b.apps !== undefined && !isValidCount(b.apps, 10000)) return false;
-	if (b.arch !== undefined && !isValidArch(b.arch)) return false;
 	return (
 		typeof b.instance_id === "string" &&
 		isValidUUID(b.instance_id) &&
@@ -86,11 +93,11 @@ async function handleReport(request: Request, env: Env): Promise<Response> {
 			body.drives,
 			body.total_bytes,
 			body.used_bytes,
-			body.version ?? null,
+			body.version,
 			body.commit ?? null,
 			body.vms ?? null,
 			body.apps ?? null,
-			body.arch ?? null,
+			body.arch,
 		)
 		.run();
 
