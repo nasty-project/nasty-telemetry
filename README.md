@@ -89,6 +89,12 @@ if !state.settings.get().await.telemetry_enabled {
 - **Worker** (`worker/`) — Cloudflare Worker that receives reports and stores them in D1 (SQLite).
 - **Site** (`site/`) — Static dashboard that reads from the worker's API and renders charts with Chart.js.
 
+## Abuse protection
+
+`POST /api/report` is rate-limited at the Cloudflare edge to **5 requests per minute per source IP**. A real NASty engine reports once every 24 hours (with random jitter), so a single legitimate box never approaches the limit; the cap exists so a script can't flood the worker with thousands of fake `instance_id` UUIDs to inflate the dashboard's *Active Instances* pill. Exceeded requests get an HTTP 429 with `Retry-After: 60`. The limit is configured via the `[[unsafe.bindings]] type = "ratelimit"` block in `worker/wrangler.toml`; self-hosters can adjust it there.
+
+`GET /api/stats` is intentionally not rate-limited — it's a read-only dashboard endpoint and the data it returns is already public.
+
 ## Privacy
 
 - The `instance_id` is a random UUID with no relation to hardware, network, or user identity.

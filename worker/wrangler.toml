@@ -6,3 +6,23 @@ compatibility_date = "2025-01-01"
 binding = "DB"
 database_name = "nasty-telemetry"
 database_id = "1f8b1d7c-ce51-44e8-b106-b9af1765318a"
+
+# Per-IP rate limit on POST /api/report. Cloudflare's Rate Limiting
+# binding is account-scoped via an arbitrary namespace_id — the actual
+# limit/period live below. Picked 60s as the period because the API
+# only accepts 10 or 60.
+#
+# A real NASty engine reports once per 24h (with jitter) and the
+# WebUI's "manual telemetry test" button fires one report per click;
+# 5/minute gives generous headroom for retries on transient failures
+# while making spam annoying. An attacker behind one IP gets 7200
+# reports/day; each fake instance_id only counts as one "active
+# instance" until it stops reporting for 3 days, so polluting the
+# dashboard meaningfully takes thousands of unique UUIDs — at which
+# point a follow-up per-instance_id check (see TODO in handleReport)
+# catches them.
+[[unsafe.bindings]]
+name = "REPORT_RATE_LIMIT"
+type = "ratelimit"
+namespace_id = "10001"
+simple = { limit = 5, period = 60 }
