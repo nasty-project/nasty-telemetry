@@ -1,5 +1,61 @@
 export interface Env {
 	DB: D1Database;
+	/** Cloudflare Rate Limiting binding declared in wrangler.toml as
+	 * `[[unsafe.bindings]] type = "ratelimit"`. Applied to POST
+	 * /api/report only; reads (`/api/stats`) skip it because they
+	 * hit a small static surface and the dashboard polls them
+	 * normally. Optional in the Env interface so the type-checker
+	 * doesn't complain on a local `wrangler dev` config that omits
+	 * the binding — see `applyRateLimit` for the fail-open behavior. */
+	REPORT_RATE_LIMIT?: RateLimit;
+}
+
+/** Per-IP rate limit guard for POST /api/report. Returns null when the
+ * request is allowed (or when the binding isn't wired, which we treat
+ * as "allow" to avoid breaking local dev). Returns a 429 Response with
+ * a Retry-After header when the limit has been exceeded.
+ *
+ * Threat model: the receiver previously accepted unlimited reports
+ * from anyone with a valid-shaped payload, so a single attacker could
+ * spam thousands of fake `instance_id` UUIDs to inflate the public
+ * "Active Instances" pill. Per-IP rate limiting is the cheapest
+ * effective defense — an attacker behind one IP can still pollute
+ * (5 reports/min ≈ 7200/day), but the 3-day staleness window on the
+ * stats query bounds the inflation, and stopping multi-thousand-RPS
+ * spam runs from a single source is the bulk of the win.
+ *
+ * Future hardening (deliberately deferred):
+ *   - Per-instance_id rate limit (one report/24h) via the D1 layer.
+ *     Catches the "rotating IPs, same UUID" pattern.
+ *   - Cloudflare zone-level rule limiting by ASN range / known proxy
+ *     networks. Requires zone-level config rather than worker code.
+ */
+async function applyRateLimit(request: Request, env: Env): Promise<Response | null> {
+	if (!env.REPORT_RATE_LIMIT) {
+		// Local dev / misconfigured deploy — allow the request rather
+		// than 500'ing. The wrangler.toml in the repo declares the
+		// binding so prod deploys always have it.
+		return null;
+	}
+	const key = request.headers.get("CF-Connecting-IP") ?? "unknown";
+	const { success } = await env.REPORT_RATE_LIMIT.limit({ key });
+	if (success) return null;
+	return new Response(
+		JSON.stringify({
+			error: "rate_limited",
+			message:
+				"Too many reports from this IP in the last minute. Real NASty engines report once per 24h — slow down.",
+		}),
+		{
+			status: 429,
+			headers: {
+				"Content-Type": "application/json",
+				// Period is 60s per wrangler.toml; Retry-After matches.
+				"Retry-After": "60",
+				...CORS_HEADERS,
+			},
+		},
+	);
 }
 
 interface ReportPayload {
@@ -79,6 +135,14 @@ function json(data: unknown, status = 200): Response {
 }
 
 async function handleReport(request: Request, env: Env): Promise<Response> {
+	// Rate-limit BEFORE parsing the body so a flood of malformed POSTs
+	// can't consume D1 quota or worker CPU on JSON parsing. The check
+	// is keyed on the source IP via the CF-Connecting-IP header — the
+	// only header Cloudflare guarantees is the original client IP
+	// (X-Forwarded-For can be appended by anyone upstream).
+	const rl = await applyRateLimit(request, env);
+	if (rl) return rl;
+
 	const body = await request.json().catch(() => null);
 	if (!isValidPayload(body)) {
 		return json({ error: "invalid payload" }, 400);
