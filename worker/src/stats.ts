@@ -242,8 +242,7 @@ export function aggregateStats(rows: Row[], now: Date) {
 					(row) => (row.total_bytes > 0 ? (row.used_bytes / row.total_bytes) * 100 : 0),
 					[
 						{ label: "<50%", below: 50 },
-						{ label: "50-80%", below: 80 },
-						{ label: "80%+", below: Number.POSITIVE_INFINITY },
+						{ label: "50%+", below: Number.POSITIVE_INFINITY },
 					],
 				),
 			},

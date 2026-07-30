@@ -112,7 +112,7 @@ describe("aggregateStats", () => {
 			{ label: "Other", instances: 6 },
 		]);
 		expect(result.latest.distributions.capacity).toEqual([{ label: "1-10 TiB", instances: 12 }]);
-		expect(result.latest.distributions.utilization).toEqual([{ label: "50-80%", instances: 12 }]);
+		expect(result.latest.distributions.utilization).toEqual([{ label: "50%+", instances: 12 }]);
 		expect(result.latest.adoption).toEqual({
 			vms: { reporting: 12, using: 4 },
 			apps: { reporting: 12, using: null },
