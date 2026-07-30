@@ -555,7 +555,7 @@
           { label: 'VMs', data: days.map(day => day.vms ?? 0), color: '#fb7185' },
         ], { points: true });
         makeChart('chart-versions', labels, versionNames.map((version, index) => ({
-          label: version,
+          label: version === 'Other' ? 'Older / other' : version,
           data: days.map(day => day.versions?.[version] ?? 0),
           color: versionColors[index % versionColors.length],
           fill: true,
