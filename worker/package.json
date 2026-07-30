@@ -3,11 +3,14 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260605.1",
     "typescript": "^5.8.0",
+    "vitest": "^4.1.10",
     "wrangler": "^4.98.0"
   }
 }

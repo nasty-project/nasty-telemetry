@@ -1,3 +1,9 @@
+import { aggregateStats, type Row } from "./stats";
+
+// Bound the D1-to-Worker result until permanent daily aggregates replace raw
+// report scans. Normal traffic is currently well below this safety limit.
+const MAX_STATS_ROWS = 40_000;
+
 export interface Env {
 	DB: D1Database;
 	/** Cloudflare Rate Limiting binding declared in wrangler.toml as
@@ -115,9 +121,12 @@ function isValidPayload(body: unknown): body is ReportPayload {
 		b.drives > 0 &&
 		b.drives <= 1000 &&
 		typeof b.total_bytes === "number" &&
+		Number.isSafeInteger(b.total_bytes) &&
 		b.total_bytes >= 0 &&
 		typeof b.used_bytes === "number" &&
-		b.used_bytes >= 0
+		Number.isSafeInteger(b.used_bytes) &&
+		b.used_bytes >= 0 &&
+		b.used_bytes <= b.total_bytes
 	);
 }
 
@@ -168,104 +177,23 @@ async function handleReport(request: Request, env: Env): Promise<Response> {
 	return json({ ok: true });
 }
 
-interface Row {
-	instance_id: string;
-	reported_at: string;
-	drives: number;
-	total_bytes: number;
-	used_bytes: number;
-	version: string | null;
-	commit_sha: string | null;
-	vms: number | null;
-	apps: number | null;
-	arch: string | null;
-}
-
 async function handleStats(env: Env): Promise<Response> {
-	// Get all reports from active instances (reported within last 3 days)
-	// Include their full history for the chart (last 90 days)
+	// Include three seed days so instances active at the beginning of the
+	// 90-day chart can be carried into that window.
 	const rows = await env.DB.prepare(
 		`SELECT instance_id, reported_at, drives, total_bytes, used_bytes, version, commit_sha, vms, apps, arch
 		 FROM telemetry
-		 WHERE instance_id IN (
-		   SELECT instance_id FROM telemetry WHERE reported_at >= date('now', '-3 days')
-		 )
-		 AND reported_at >= date('now', '-90 days')
-		 ORDER BY reported_at`
-	).all<Row>();
-
-	if (rows.results.length === 0) {
-		return json({ days: [], latest: { versions: [], arches: [] } }, 200);
+		 WHERE reported_at >= date('now', '-92 days')
+		 ORDER BY reported_at, instance_id
+		 LIMIT ?`
+	)
+		.bind(MAX_STATS_ROWS + 1)
+		.all<Row>();
+	if (rows.results.length > MAX_STATS_ROWS) {
+		return json({ error: "stats temporarily unavailable" }, 503);
 	}
 
-	// Collect all unique days
-	const allDays = [...new Set(rows.results.map((r) => r.reported_at))].sort();
-
-	// For each day, use the instance's report for that day, or carry forward
-	// its most recent previous report. This avoids dips when instances
-	// haven't reported yet today due to random jitter.
-	const lastSeen = new Map<string, Row>();
-	const days = allDays.map((day) => {
-		// Update lastSeen with any reports from this day
-		for (const r of rows.results) {
-			if (r.reported_at === day) {
-				lastSeen.set(r.instance_id, r);
-			}
-		}
-
-		// Aggregate from all instances last seen within 3 days of this day
-		let instances = 0;
-		let drives = 0;
-		let total_bytes = 0;
-		let used_bytes = 0;
-		let vms = 0;
-		let apps = 0;
-
-		for (const [, r] of lastSeen) {
-			// Only count if last report is within 3 days of this day
-			const dayMs = new Date(day).getTime();
-			const reportMs = new Date(r.reported_at).getTime();
-			if (dayMs - reportMs <= 3 * 86400000) {
-				instances++;
-				drives += r.drives;
-				total_bytes += r.total_bytes;
-				used_bytes += r.used_bytes;
-				vms += r.vms ?? 0;
-				apps += r.apps ?? 0;
-			}
-		}
-
-		return { day, instances, drives, total_bytes, used_bytes, vms, apps };
-	});
-
-	// Build breakdowns from the final-day lastSeen snapshot. Same 3-day
-	// staleness gate as the per-day aggregates so we agree with the "Active
-	// Instances" stat card.
-	const finalDay = allDays[allDays.length - 1];
-	const finalDayMs = new Date(finalDay).getTime();
-	const versionCounts = new Map<string, number>();
-	const archCounts = new Map<string, number>();
-	for (const [, r] of lastSeen) {
-		const reportMs = new Date(r.reported_at).getTime();
-		if (finalDayMs - reportMs > 3 * 86400000) continue;
-		// Group commits under their semver. "+" indicates "0.0.3 family,
-		// exact commit may vary" — see dashboard for rendering.
-		const versionLabel = r.version ? `${r.version}+` : "unknown";
-		versionCounts.set(versionLabel, (versionCounts.get(versionLabel) ?? 0) + 1);
-		const archLabel = r.arch ?? "unknown";
-		archCounts.set(archLabel, (archCounts.get(archLabel) ?? 0) + 1);
-	}
-
-	const sortDesc = (a: [string, number], b: [string, number]) =>
-		b[1] - a[1] || a[0].localeCompare(b[0]);
-	const versions = [...versionCounts.entries()]
-		.sort(sortDesc)
-		.map(([version, instances]) => ({ version, instances }));
-	const arches = [...archCounts.entries()]
-		.sort(sortDesc)
-		.map(([arch, instances]) => ({ arch, instances }));
-
-	return json({ days, latest: { versions, arches } }, 200);
+	return json(aggregateStats(rows.results, new Date()), 200);
 }
 
 export default {

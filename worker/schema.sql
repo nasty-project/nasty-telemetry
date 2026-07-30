@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS telemetry (
   PRIMARY KEY (instance_id, reported_at)
 );
 
+CREATE INDEX IF NOT EXISTS idx_telemetry_reported_at
+  ON telemetry (reported_at, instance_id);
+
 -- Migration for existing databases. Run once via:
 --   wrangler d1 execute nasty-telemetry --remote --command "ALTER TABLE telemetry ADD COLUMN version TEXT;"
 --   wrangler d1 execute nasty-telemetry --remote --command "ALTER TABLE telemetry ADD COLUMN commit_sha TEXT;"

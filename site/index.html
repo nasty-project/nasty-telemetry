@@ -34,7 +34,7 @@
     h1 { font-size: 2rem; }
     .stats {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: 1rem;
       margin-bottom: 2rem;
     }
@@ -59,6 +59,48 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
+    .stat-card .meta {
+      min-height: 1rem;
+      margin-top: 0.45rem;
+      color: #666;
+      font-size: 0.72rem;
+    }
+    .stat-card .meta.positive { color: #6ee7b7; }
+    .stat-card .meta.negative { color: #fca5a5; }
+    .fleet-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      margin-bottom: 2rem;
+      overflow: hidden;
+      border: 1px solid #2a2d37;
+      border-radius: 10px;
+      background: #151821;
+    }
+    .fleet-average {
+      padding: 1rem 1.2rem;
+      border-right: 1px solid #2a2d37;
+    }
+    .fleet-average:last-child { border-right: 0; }
+    .fleet-average .label {
+      color: #666;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .fleet-average .value {
+      margin-top: 0.25rem;
+      color: #ddd;
+      font-size: 1.05rem;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+    .fleet-average .detail {
+      display: block;
+      margin-top: 0.2rem;
+      color: #666;
+      font-size: 0.7rem;
+      font-weight: 400;
+    }
     .charts {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -67,6 +109,7 @@
     }
     @media (max-width: 768px) {
       .charts { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr 1fr; }
     }
     .chart-container {
       background: #1a1d27;
@@ -82,6 +125,11 @@
       margin-bottom: 1rem;
       text-transform: uppercase;
       letter-spacing: 0.03em;
+    }
+    .chart-note {
+      margin: -0.6rem 0 1rem;
+      color: #666;
+      font-size: 0.72rem;
     }
     .chart-heading {
       display: flex;
@@ -127,8 +175,18 @@
       gap: 1rem;
       margin-bottom: 1rem;
     }
+    .distribution-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
     @media (max-width: 768px) {
       .breakdown { grid-template-columns: 1fr; }
+      .distribution-grid { grid-template-columns: 1fr; }
+      .fleet-strip { grid-template-columns: 1fr 1fr; }
+      .fleet-average:nth-child(2) { border-right: 0; }
+      .fleet-average:nth-child(-n + 2) { border-bottom: 1px solid #2a2d37; }
     }
     .bar-list { display: flex; flex-direction: column; gap: 0.6rem; }
     .bar-row {
@@ -155,6 +213,21 @@
       text-align: right;
       font-variant-numeric: tabular-nums;
     }
+    .footnote {
+      padding: 1.5rem 0 0.5rem;
+      color: #555;
+      font-size: 0.72rem;
+      line-height: 1.6;
+      text-align: center;
+    }
+    @media (max-width: 480px) {
+      body { padding: 1rem; }
+      .stats { grid-template-columns: 1fr; }
+      .header { margin-bottom: 1.5rem; }
+      .header img { height: 6rem; }
+      .stat-card, .chart-container { padding: 1.1rem; }
+      .bar-row { grid-template-columns: 5rem 1fr 2rem; gap: 0.5rem; }
+    }
   </style>
 </head>
 <body>
@@ -163,7 +236,7 @@
       <img src="logo.svg" alt="NASty" />
     </a>
     <h1>Telemetry</h1>
-    <p class="subtitle">Anonymous, aggregated usage statistics from <a href="https://github.com/nasty-project">NASty</a> instances</p>
+    <p class="subtitle">Aggregated usage statistics from reporting <a href="https://github.com/nasty-project">NASty</a> instances</p>
   </div>
 
   <div id="content" class="loading">Loading...</div>
@@ -178,33 +251,28 @@
       return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
     }
 
-    function makeChart(canvasId, labels, data, color, opts = {}) {
+    function makeChart(canvasId, labels, series, opts = {}) {
       const ctx = document.getElementById(canvasId).getContext('2d');
-      const gradient = ctx.createLinearGradient(0, 0, 0, 220);
-      gradient.addColorStop(0, color + '40');
-      gradient.addColorStop(1, color + '00');
-
-      const isInteger = data.every(v => Number.isInteger(v));
-      const maxVal = Math.max(...data);
+      const allValues = series.flatMap(item => item.data);
+      const isInteger = allValues.every(v => Number.isInteger(v));
+      const maxVal = Math.max(...allValues, 0);
 
       new Chart(ctx, {
         type: opts.type || 'line',
         data: {
           labels,
-          datasets: [{
-            data,
-            borderColor: color,
-            backgroundColor: opts.type === 'bar' ? color + '80' : gradient,
-            borderWidth: opts.type === 'bar' ? 0 : 2.5,
-            fill: opts.type !== 'bar',
-            tension: 0,
-            pointRadius: opts.type === 'bar' ? 0 : 4,
-            pointBackgroundColor: color,
-            pointBorderColor: '#1a1d27',
-            pointBorderWidth: 2,
-            pointHoverRadius: 6,
+          datasets: series.map(item => ({
+            label: item.label,
+            data: item.data,
+            borderColor: item.color,
+            backgroundColor: item.background || item.color + (opts.type === 'bar' ? '80' : '30'),
+            borderWidth: opts.type === 'bar' ? 0 : (item.borderWidth ?? 2),
+            fill: item.fill ?? false,
+            tension: 0.15,
+            pointRadius: opts.points ? 2 : 0,
+            pointHoverRadius: 5,
             borderRadius: opts.type === 'bar' ? 4 : 0,
-          }],
+          })),
         },
         options: {
           responsive: true,
@@ -212,12 +280,14 @@
           interaction: { intersect: false, mode: 'index' },
           scales: {
             x: {
+              stacked: opts.stacked || false,
               ticks: { color: '#555', font: { size: 11 } },
               grid: { color: '#1f2230' },
               border: { color: '#2a2d37' },
             },
             y: {
               beginAtZero: true,
+              stacked: opts.stacked || false,
               ticks: {
                 color: '#555',
                 font: { size: 11 },
@@ -230,7 +300,10 @@
             },
           },
           plugins: {
-            legend: { display: false },
+            legend: {
+              display: series.length > 1,
+              labels: { color: '#888', boxWidth: 10, boxHeight: 10, usePointStyle: true },
+            },
             tooltip: {
               backgroundColor: '#1a1d27',
               borderColor: '#2a2d37',
@@ -239,8 +312,13 @@
               bodyColor: '#e0e0e0',
               bodyFont: { weight: '600' },
               padding: 10,
-              displayColors: false,
-              callbacks: opts.yFormat ? { label: (c) => opts.yFormat(c.parsed.y) } : {},
+              displayColors: series.length > 1,
+              callbacks: {
+                label: (context) => {
+                  const value = opts.yFormat ? opts.yFormat(context.parsed.y) : context.parsed.y;
+                  return series.length > 1 ? `${context.dataset.label}: ${value}` : String(value);
+                },
+              },
             },
           },
         },
@@ -279,6 +357,34 @@
       });
     }
 
+    function sevenDayDelta(days, key) {
+      if (days.length < 8) return null;
+      return days[days.length - 1][key] - days[days.length - 8][key];
+    }
+
+    function renderStatCard(label, value, delta, formatter = value => value.toLocaleString(), detail = '') {
+      let meta = 'Not enough history';
+      let metaClass = '';
+      if (delta !== null) {
+        meta = delta === 0 ? 'No change in 7 days' : `${delta > 0 ? '+' : '-'}${formatter(Math.abs(delta))} in 7 days`;
+        metaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
+      }
+      if (detail) meta = `${detail} | ${meta}`;
+      return `
+        <div class="stat-card">
+          <div class="label">${label}</div>
+          <div class="value">${value}</div>
+          <div class="meta ${metaClass}">${meta}</div>
+        </div>
+      `;
+    }
+
+    function adoptionDetail(metric, noun) {
+      if (!metric?.reporting) return 'No observed reports';
+      if (metric.using === null) return 'Adoption hidden for small cohorts';
+      return `${Math.round((metric.using / metric.reporting) * 100)}% of reporting instances use ${noun}`;
+    }
+
     function renderBarList(entries, keyName) {
       if (!entries || entries.length === 0) return '<p class="loading" style="padding:1rem;">No data yet.</p>';
       const max = Math.max(...entries.map(e => e.instances));
@@ -309,32 +415,46 @@
         const labels = days.map(d => d.day);
         const versions = latestBreakdown?.versions ?? [];
         const arches = latestBreakdown?.arches ?? [];
+        const distributions = latestBreakdown?.distributions ?? { drives: [], capacity: [], utilization: [] };
+        const adoption = latestBreakdown?.adoption ?? {
+          vms: { reporting: latest.instances, using: null },
+          apps: { reporting: latest.instances, using: null },
+        };
+        const utilization = latest.total_bytes > 0 ? (latest.used_bytes / latest.total_bytes) * 100 : 0;
+        const versionNames = [...new Set(days.flatMap(day => Object.keys(day.versions ?? {})))].sort(compareVersionLabels);
+        const versionColors = ['#c4b5fd', '#818cf8', '#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#a3e635', '#f472b6'];
+        const instanceDivisor = latest.instances || 1;
+        const vmDivisor = latest.vms_reporting || instanceDivisor;
+        const appDivisor = latest.apps_reporting || instanceDivisor;
 
-        document.getElementById('content').innerHTML = `
+        const content = document.getElementById('content');
+        content.classList.remove('loading');
+        content.innerHTML = `
           <div class="stats">
-            <div class="stat-card">
-              <div class="label">Active Instances</div>
-              <div class="value">${latest.instances}</div>
+            ${renderStatCard('Active Instances', latest.instances.toLocaleString(), sevenDayDelta(days, 'instances'))}
+            ${renderStatCard('Total Drives', latest.drives.toLocaleString(), sevenDayDelta(days, 'drives'))}
+            ${renderStatCard('Managed Storage', formatBytes(latest.total_bytes), sevenDayDelta(days, 'total_bytes'), formatBytes)}
+            ${renderStatCard('Storage Used', `${utilization.toFixed(1)}%`, sevenDayDelta(days, 'used_bytes'), formatBytes, formatBytes(latest.used_bytes))}
+            ${renderStatCard('Configured VMs', (latest.vms ?? 0).toLocaleString(), sevenDayDelta(days, 'vms'))}
+            ${renderStatCard('Installed Apps', (latest.apps ?? 0).toLocaleString(), sevenDayDelta(days, 'apps'))}
+          </div>
+
+          <div class="fleet-strip" aria-label="Fleet averages">
+            <div class="fleet-average">
+              <div class="label">Drives / instance</div>
+              <div class="value">${(latest.drives / instanceDivisor).toFixed(1)}</div>
             </div>
-            <div class="stat-card">
-              <div class="label">Total Drives</div>
-              <div class="value">${latest.drives}</div>
+            <div class="fleet-average">
+              <div class="label">Storage / instance</div>
+              <div class="value">${formatBytes(latest.total_bytes / instanceDivisor)}</div>
             </div>
-            <div class="stat-card">
-              <div class="label">Total Storage</div>
-              <div class="value">${formatBytes(latest.total_bytes)}</div>
+            <div class="fleet-average">
+              <div class="label">VMs / reporting instance</div>
+              <div class="value">${((latest.vms ?? 0) / vmDivisor).toFixed(1)} <span class="detail">${adoptionDetail(adoption.vms, 'VMs')}</span></div>
             </div>
-            <div class="stat-card">
-              <div class="label">Used Storage</div>
-              <div class="value">${formatBytes(latest.used_bytes)}</div>
-            </div>
-            <div class="stat-card">
-              <div class="label">Total VMs</div>
-              <div class="value">${latest.vms ?? 0}</div>
-            </div>
-            <div class="stat-card">
-              <div class="label">Total Apps</div>
-              <div class="value">${latest.apps ?? 0}</div>
+            <div class="fleet-average">
+              <div class="label">Apps / reporting instance</div>
+              <div class="value">${((latest.apps ?? 0) / appDivisor).toFixed(1)} <span class="detail">${adoptionDetail(adoption.apps, 'apps')}</span></div>
             </div>
           </div>
 
@@ -349,9 +469,22 @@
               <canvas id="chart-drives"></canvas>
             </div>
 
-            <div class="chart-container full">
-              <h2>Storage Managed</h2>
+            <div class="chart-container">
+              <h2>Storage Utilization</h2>
+              <p class="chart-note">Used and available capacity across reporting instances</p>
               <canvas id="chart-storage"></canvas>
+            </div>
+
+            <div class="chart-container">
+              <h2>Workload Adoption</h2>
+              <p class="chart-note">Configured virtual machines and installed apps</p>
+              <canvas id="chart-workloads"></canvas>
+            </div>
+
+            <div class="chart-container full">
+              <h2>Version Adoption</h2>
+              <p class="chart-note">Active instances grouped by release family</p>
+              <canvas id="chart-versions"></canvas>
             </div>
           </div>
 
@@ -371,6 +504,26 @@
               ${renderBarList(arches, 'arch')}
             </div>
           </div>
+
+          <div class="distribution-grid">
+            <div class="chart-container">
+              <h2>Drives per instance</h2>
+              ${renderBarList(distributions.drives, 'label')}
+            </div>
+            <div class="chart-container">
+              <h2>Capacity per instance</h2>
+              ${renderBarList(distributions.capacity, 'label')}
+            </div>
+            <div class="chart-container">
+              <h2>Storage utilization</h2>
+              ${renderBarList(distributions.utilization, 'label')}
+            </div>
+          </div>
+
+          <p class="footnote">
+            Active means an instance reported within the last three days. Historical totals use the population active on each day.
+            Reports are aggregate and unauthenticated, so counts indicate reporting instances rather than verified installations.
+          </p>
         `;
 
         const versionBreakdown = document.getElementById('version-breakdown');
@@ -387,9 +540,27 @@
           });
         });
 
-        makeChart('chart-instances', labels, days.map(d => d.instances), '#818cf8', { type: 'bar' });
-        makeChart('chart-drives', labels, days.map(d => d.drives), '#34d399', { type: 'bar' });
-        makeChart('chart-storage', labels, days.map(d => d.total_bytes), '#fbbf24', { yFormat: v => formatBytes(v) });
+        makeChart('chart-instances', labels, [
+          { label: 'Instances', data: days.map(day => day.instances), color: '#818cf8' },
+        ], { type: 'bar' });
+        makeChart('chart-drives', labels, [
+          { label: 'Drives', data: days.map(day => day.drives), color: '#34d399' },
+        ], { type: 'bar' });
+        makeChart('chart-storage', labels, [
+          { label: 'Used', data: days.map(day => day.used_bytes), color: '#fbbf24', fill: true },
+          { label: 'Available', data: days.map(day => Math.max(0, day.total_bytes - day.used_bytes)), color: '#34d399', fill: true },
+        ], { stacked: true, yFormat: formatBytes });
+        makeChart('chart-workloads', labels, [
+          { label: 'Apps', data: days.map(day => day.apps ?? 0), color: '#38bdf8' },
+          { label: 'VMs', data: days.map(day => day.vms ?? 0), color: '#fb7185' },
+        ], { points: true });
+        makeChart('chart-versions', labels, versionNames.map((version, index) => ({
+          label: version,
+          data: days.map(day => day.versions?.[version] ?? 0),
+          color: versionColors[index % versionColors.length],
+          fill: true,
+          borderWidth: 1.5,
+        })), { stacked: true });
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="error">Failed to load data: ${err.message}</p>`;
       }
