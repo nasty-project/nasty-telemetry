@@ -1,6 +1,6 @@
 # NASty Telemetry
 
-Anonymous telemetry for the [NASty](https://github.com/nasty-project/nasty) NAS appliance. Enabled by default, can be disabled from the WebUI. Helps us understand how NASty is used in the real world — how many drives, how much storage, how many instances.
+Privacy-preserving usage telemetry for the [NASty](https://github.com/nasty-project/nasty) NAS appliance. Enabled by default, can be disabled from the WebUI. Helps us understand how NASty is used in the real world — how many drives, how much storage, how many instances.
 
 ## Dashboard
 
@@ -36,7 +36,7 @@ Every 24 hours (with random jitter), each NASty instance sends a single JSON pay
 | `apps` | Total number of installed apps. |
 | `arch` | CPU architecture — `x86_64` or `aarch64`. |
 
-**That's it.** No hostnames, no IP addresses, no file names, no user data, no hardware identifiers.
+**That's it.** The report payload contains no hostnames, IP addresses, file names, user data, or hardware identifiers.
 
 ## Source code
 
@@ -89,6 +89,13 @@ if !state.settings.get().await.telemetry_enabled {
 - **Worker** (`worker/`) — Cloudflare Worker that receives reports and stores them in D1 (SQLite).
 - **Site** (`site/`) — Static dashboard that reads from the worker's API and renders charts with Chart.js.
 
+## Aggregation and retention
+
+- Each instance contributes at most one row per UTC day; sending again replaces that day's row.
+- An instance is considered active for three days after its most recent report.
+- The public API exposes a rolling 90-day aggregate plus coarse current distributions. It never returns instance IDs or individual reports.
+- Daily per-instance rows are currently retained indefinitely. The planned retention model is to materialize permanent daily aggregates and delete per-instance rows after 90 days, preserving long-term trends without keeping long-term pseudonymous history.
+
 ## Abuse protection
 
 `POST /api/report` is rate-limited at the Cloudflare edge to **5 requests per minute per source IP**. A real NASty engine reports once every 24 hours (with random jitter), so a single legitimate box never approaches the limit; the cap exists so a script can't flood the worker with thousands of fake `instance_id` UUIDs to inflate the dashboard's *Active Instances* pill. Exceeded requests get an HTTP 429 with `Retry-After: 60`. The limit is configured via the `[[unsafe.bindings]] type = "ratelimit"` block in `worker/wrangler.toml`; self-hosters can adjust it there.
@@ -99,5 +106,6 @@ if !state.settings.get().await.telemetry_enabled {
 
 - The `instance_id` is a random UUID with no relation to hardware, network, or user identity.
 - Reports are sent over HTTPS to a Cloudflare Worker.
-- No cookies, no fingerprinting, no tracking beyond the anonymous instance ID.
+- The persistent pseudonymous UUID associates daily reports from the same installation; it is not derived from hardware or user data.
+- Source IPs are used transiently by Cloudflare's rate limiter and are not stored in the telemetry database.
 - Disabling telemetry immediately stops all data collection — no "last report" is sent.
