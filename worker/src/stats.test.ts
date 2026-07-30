@@ -148,4 +148,23 @@ describe("aggregateStats", () => {
 		expect(result.latest.versions).toHaveLength(12);
 		expect(result.latest.versions.find((entry) => entry.version === "Other")?.instances).toBe(2);
 	});
+
+	it("keeps a newly active version in history even with little cumulative data", () => {
+		const historical = Array.from({ length: 7 }, (_, index) =>
+			report({
+				instance_id: `historical-${index}`,
+				reported_at: "2026-07-20",
+				version: `0.0.${index + 7}`,
+			}),
+		);
+		const result = aggregateStats(
+			[
+				...historical,
+				report({ instance_id: "current", reported_at: "2026-07-30", version: "0.0.15" }),
+			],
+			new Date("2026-07-30T12:00:00Z"),
+		);
+
+		expect(result.days.at(-1)?.versions["0.0.15+"]).toBe(1);
+	});
 });

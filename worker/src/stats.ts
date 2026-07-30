@@ -58,7 +58,10 @@ function limitCounts(counts: Record<string, number>, limit: number): Record<stri
 	return Object.fromEntries([...visible, ["Other", other]]);
 }
 
-function compactVersionHistory(days: Array<{ versions: Record<string, number> }>): void {
+function compactVersionHistory(
+	days: Array<{ versions: Record<string, number> }>,
+	current: Record<string, number>,
+): void {
 	const totals: Record<string, number> = {};
 	for (const day of days) {
 		for (const [version, count] of Object.entries(day.versions)) {
@@ -67,12 +70,15 @@ function compactVersionHistory(days: Array<{ versions: Record<string, number> }>
 	}
 	if (Object.keys(totals).length <= MAX_HISTORY_VERSIONS) return;
 
-	const visible = new Set(
-		Object.entries(totals)
-			.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-			.slice(0, MAX_HISTORY_VERSIONS - 1)
-			.map(([version]) => version),
-	);
+	const visible = new Set<string>();
+	for (const [version] of Object.entries(current).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+		if (visible.size === MAX_HISTORY_VERSIONS - 1) break;
+		visible.add(version);
+	}
+	for (const [version] of Object.entries(totals).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+		if (visible.size === MAX_HISTORY_VERSIONS - 1) break;
+		visible.add(version);
+	}
 	for (const day of days) {
 		let other = 0;
 		const compacted: Record<string, number> = {};
@@ -205,11 +211,11 @@ export function aggregateStats(rows: Row[], now: Date) {
 		latestRows = activeRows;
 	}
 
-	compactVersionHistory(days);
 	const latestVersionCounts = latestRows.reduce<Record<string, number>>((counts, row) => {
 		increment(counts, versionLabel(row.version));
 		return counts;
 	}, {});
+	compactVersionHistory(days, latestVersionCounts);
 	const tebibyte = 2 ** 40;
 	return {
 		days,
