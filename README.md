@@ -20,6 +20,10 @@ Every 24 hours (with random jitter), each NASty instance sends a single JSON pay
   "commit": "a1b2c3d",
   "vms": 2,
   "apps": 5,
+  "smb_shares": 3,
+  "nfs_exports": 1,
+  "iscsi_luns": 2,
+  "nvmeof_namespaces": 1,
   "arch": "x86_64"
 }
 ```
@@ -34,6 +38,10 @@ Every 24 hours (with random jitter), each NASty instance sends a single JSON pay
 | `commit` | Short git SHA the engine was built from. Omitted for dev cargo builds. |
 | `vms` | Total number of configured VMs (running + stopped). |
 | `apps` | Total number of installed apps. |
+| `smb_shares` | Number of configured SMB shares. Omitted if collection fails. |
+| `nfs_exports` | Number of configured NFS exports. Omitted if collection fails. |
+| `iscsi_luns` | Number of configured iSCSI LUNs. Omitted if collection fails. |
+| `nvmeof_namespaces` | Number of configured NVMe-oF namespaces. Omitted if collection fails. |
 | `arch` | CPU architecture — `x86_64` or `aarch64`. |
 
 **That's it.** The report payload contains no hostnames, IP addresses, file names, user data, or hardware identifiers.
@@ -55,6 +63,14 @@ struct Report {
     commit: Option<String>,
     vms: usize,
     apps: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    smb_shares: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nfs_exports: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    iscsi_luns: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nvmeof_namespaces: Option<usize>,
     arch: &'static str,
 }
 ```
@@ -88,12 +104,13 @@ if !state.settings.get().await.telemetry_enabled {
 
 - **Worker** (`worker/`) — Cloudflare Worker that receives reports and stores them in D1 (SQLite).
 - **Site** (`site/`) — Static dashboard that reads from the worker's API and renders charts with Chart.js.
+- **Migrations** (`worker/migrations/`) — The complete D1 schema history for both fresh and existing databases; apply with `wrangler d1 migrations apply nasty-telemetry`.
 
 ## Aggregation and retention
 
 - Each instance contributes at most one row per UTC day; sending again replaces that day's row.
 - An instance is considered active for three days after its most recent report.
-- The public API exposes a rolling 90-day aggregate plus coarse current distributions. It never returns instance IDs or individual reports.
+- The public API exposes a rolling 90-day aggregate plus coarse current distributions. Protocol adoption requires at least 10 observed instances and suppresses cells smaller than 3. It never returns instance IDs or individual reports.
 - Daily per-instance rows are currently retained indefinitely. The planned retention model is to materialize permanent daily aggregates and delete per-instance rows after 90 days, preserving long-term trends without keeping long-term pseudonymous history.
 
 ## Abuse protection

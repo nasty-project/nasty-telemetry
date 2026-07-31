@@ -16,6 +16,10 @@ export interface Row {
 	commit_sha: string | null;
 	vms: number | null;
 	apps: number | null;
+	smb_shares: number | null;
+	nfs_exports: number | null;
+	iscsi_luns: number | null;
+	nvmeof_namespaces: number | null;
 	arch: string | null;
 }
 
@@ -133,6 +137,29 @@ function adoption(rows: Row[], key: "vms" | "apps"): { reporting: number; using:
 	return { reporting, using };
 }
 
+type ProtocolKey = "smb_shares" | "nfs_exports" | "iscsi_luns" | "nvmeof_namespaces";
+
+function protocolAdoption(
+	rows: Row[],
+	key: ProtocolKey,
+): { reporting: number; using: number | null; configured: number | null } {
+	const observed = rows.filter((row) => row[key] !== null);
+	const reporting = observed.length;
+	const using = observed.filter((row) => (row[key] ?? 0) > 0).length;
+	if (
+		reporting < MIN_DISTRIBUTION_POPULATION ||
+		using < MIN_VISIBLE_CELL ||
+		reporting - using < MIN_VISIBLE_CELL
+	) {
+		return { reporting, using: null, configured: null };
+	}
+	return {
+		reporting,
+		using,
+		configured: observed.reduce((sum, row) => sum + (row[key] ?? 0), 0),
+	};
+}
+
 export function aggregateStats(rows: Row[], now: Date) {
 	if (rows.length === 0) {
 		return {
@@ -144,6 +171,12 @@ export function aggregateStats(rows: Row[], now: Date) {
 				adoption: {
 					vms: { reporting: 0, using: 0 },
 					apps: { reporting: 0, using: 0 },
+				},
+				protocols: {
+					smb: { reporting: 0, using: null, configured: null },
+					nfs: { reporting: 0, using: null, configured: null },
+					iscsi: { reporting: 0, using: null, configured: null },
+					nvmeof: { reporting: 0, using: null, configured: null },
 				},
 			},
 		};
@@ -255,6 +288,12 @@ export function aggregateStats(rows: Row[], now: Date) {
 			adoption: {
 				vms: adoption(latestRows, "vms"),
 				apps: adoption(latestRows, "apps"),
+			},
+			protocols: {
+				smb: protocolAdoption(latestRows, "smb_shares"),
+				nfs: protocolAdoption(latestRows, "nfs_exports"),
+				iscsi: protocolAdoption(latestRows, "iscsi_luns"),
+				nvmeof: protocolAdoption(latestRows, "nvmeof_namespaces"),
 			},
 		},
 	};

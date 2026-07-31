@@ -36,9 +36,9 @@ jobs:
         working-directory: worker
         run: npm run typecheck
 
-      - name: Apply database indexes
+      - name: Apply database migrations
         working-directory: worker
-        run: npx wrangler d1 execute nasty-telemetry --remote --command "CREATE INDEX IF NOT EXISTS idx_telemetry_reported_at ON telemetry (reported_at, instance_id);"
+        run: npx wrangler d1 migrations apply nasty-telemetry --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 

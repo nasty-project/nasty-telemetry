@@ -80,6 +80,10 @@ interface ReportPayload {
 	commit?: string;
 	vms?: number;
 	apps?: number;
+	smb_shares?: number;
+	nfs_exports?: number;
+	iscsi_luns?: number;
+	nvmeof_namespaces?: number;
 }
 
 const ALLOWED_ARCHES = new Set(["x86_64", "aarch64"]);
@@ -104,7 +108,7 @@ function isValidArch(s: unknown): s is string {
 	return typeof s === "string" && ALLOWED_ARCHES.has(s);
 }
 
-function isValidPayload(body: unknown): body is ReportPayload {
+export function isValidPayload(body: unknown): body is ReportPayload {
 	if (typeof body !== "object" || body === null) return false;
 	const b = body as Record<string, unknown>;
 	// version + arch are required (see ReportPayload).
@@ -113,6 +117,10 @@ function isValidPayload(body: unknown): body is ReportPayload {
 	if (b.commit !== undefined && !isValidCommit(b.commit)) return false;
 	if (b.vms !== undefined && !isValidCount(b.vms, 10000)) return false;
 	if (b.apps !== undefined && !isValidCount(b.apps, 10000)) return false;
+	if (b.smb_shares !== undefined && !isValidCount(b.smb_shares, 10000)) return false;
+	if (b.nfs_exports !== undefined && !isValidCount(b.nfs_exports, 10000)) return false;
+	if (b.iscsi_luns !== undefined && !isValidCount(b.iscsi_luns, 10000)) return false;
+	if (b.nvmeof_namespaces !== undefined && !isValidCount(b.nvmeof_namespaces, 10000)) return false;
 	return (
 		typeof b.instance_id === "string" &&
 		isValidUUID(b.instance_id) &&
@@ -158,8 +166,10 @@ async function handleReport(request: Request, env: Env): Promise<Response> {
 	}
 
 	await env.DB.prepare(
-		`INSERT OR REPLACE INTO telemetry (instance_id, reported_at, drives, total_bytes, used_bytes, version, commit_sha, vms, apps, arch)
-		 VALUES (?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?)`
+		`INSERT OR REPLACE INTO telemetry (
+		   instance_id, reported_at, drives, total_bytes, used_bytes, version, commit_sha, vms, apps,
+		   smb_shares, nfs_exports, iscsi_luns, nvmeof_namespaces, arch
+		 ) VALUES (?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	)
 		.bind(
 			body.instance_id,
@@ -170,6 +180,10 @@ async function handleReport(request: Request, env: Env): Promise<Response> {
 			body.commit ?? null,
 			body.vms ?? null,
 			body.apps ?? null,
+			body.smb_shares ?? null,
+			body.nfs_exports ?? null,
+			body.iscsi_luns ?? null,
+			body.nvmeof_namespaces ?? null,
 			body.arch,
 		)
 		.run();
@@ -181,7 +195,8 @@ async function handleStats(env: Env): Promise<Response> {
 	// Include three seed days so instances active at the beginning of the
 	// 90-day chart can be carried into that window.
 	const rows = await env.DB.prepare(
-		`SELECT instance_id, reported_at, drives, total_bytes, used_bytes, version, commit_sha, vms, apps, arch
+		`SELECT instance_id, reported_at, drives, total_bytes, used_bytes, version, commit_sha, vms, apps,
+		        smb_shares, nfs_exports, iscsi_luns, nvmeof_namespaces, arch
 		 FROM telemetry
 		 WHERE reported_at >= date('now', '-92 days')
 		 ORDER BY reported_at, instance_id

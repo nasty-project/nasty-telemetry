@@ -10,6 +10,10 @@ function report(overrides: Partial<Row> & Pick<Row, "instance_id" | "reported_at
 		commit_sha: null,
 		vms: 0,
 		apps: 0,
+		smb_shares: null,
+		nfs_exports: null,
+		iscsi_luns: null,
+		nvmeof_namespaces: null,
 		arch: "x86_64",
 		...overrides,
 	};
@@ -166,5 +170,26 @@ describe("aggregateStats", () => {
 		);
 
 		expect(result.days.at(-1)?.versions["0.0.15+"]).toBe(1);
+	});
+
+	it("publishes protocol counts only with a privacy-safe observed cohort", () => {
+		const rows = Array.from({ length: 12 }, (_, index) =>
+			report({
+				instance_id: `instance-${index}`,
+				reported_at: "2026-07-30",
+				smb_shares: index < 5 ? 2 : 0,
+				nfs_exports: index < 3 ? 1 : 0,
+				iscsi_luns: index < 2 ? 1 : 0,
+				nvmeof_namespaces: null,
+			}),
+		);
+		const result = aggregateStats(rows, new Date("2026-07-30T12:00:00Z"));
+
+		expect(result.latest.protocols).toEqual({
+			smb: { reporting: 12, using: 5, configured: 10 },
+			nfs: { reporting: 12, using: 3, configured: 3 },
+			iscsi: { reporting: 12, using: null, configured: null },
+			nvmeof: { reporting: 0, using: null, configured: null },
+		});
 	});
 });

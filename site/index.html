@@ -101,6 +101,52 @@
       font-size: 0.7rem;
       font-weight: 400;
     }
+    .protocol-section { margin-bottom: 1rem; }
+    .protocol-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+    }
+    .protocol-card {
+      padding: 1rem;
+      border: 1px solid #2a2d37;
+      border-radius: 8px;
+      background: #151821;
+    }
+    .protocol-card .name {
+      color: #999;
+      font-size: 0.75rem;
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .protocol-card .value {
+      margin-top: 0.35rem;
+      color: #ddd;
+      font-size: 1.35rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .protocol-card .detail {
+      min-height: 2rem;
+      margin-top: 0.2rem;
+      color: #666;
+      font-size: 0.68rem;
+      line-height: 1.45;
+    }
+    .protocol-bar {
+      height: 0.35rem;
+      margin-top: 0.65rem;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #2a2d37;
+    }
+    .protocol-bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+    }
     .charts {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -185,6 +231,7 @@
       .breakdown { grid-template-columns: 1fr; }
       .distribution-grid { grid-template-columns: 1fr; }
       .fleet-strip { grid-template-columns: 1fr 1fr; }
+      .protocol-grid { grid-template-columns: 1fr 1fr; }
       .fleet-average:nth-child(2) { border-right: 0; }
       .fleet-average:nth-child(-n + 2) { border-bottom: 1px solid #2a2d37; }
     }
@@ -223,6 +270,7 @@
     @media (max-width: 480px) {
       body { padding: 1rem; }
       .stats { grid-template-columns: 1fr; }
+      .protocol-grid { grid-template-columns: 1fr; }
       .header { margin-bottom: 1.5rem; }
       .header img { height: 6rem; }
       .stat-card, .chart-container { padding: 1.1rem; }
@@ -385,6 +433,32 @@
       return `${Math.round((metric.using / metric.reporting) * 100)}% of reporting instances use ${noun}`;
     }
 
+    function renderProtocolCard(name, metric, unit) {
+      if (!metric || metric.using === null) {
+        const observed = metric?.reporting ?? 0;
+        const collecting = observed < 10;
+        return `
+          <div class="protocol-card">
+            <div class="name">${name}</div>
+            <div class="value">${collecting ? 'Collecting' : 'Private'}</div>
+            <div class="detail">${collecting
+              ? `${observed} upgraded instances reporting; shown after 10 are observed`
+              : `${observed} instances reporting; adoption hidden because a cohort is smaller than 3`}</div>
+            <div class="protocol-bar"><span style="width:0%"></span></div>
+          </div>
+        `;
+      }
+      const percent = metric.reporting > 0 ? (metric.using / metric.reporting) * 100 : 0;
+      return `
+        <div class="protocol-card">
+          <div class="name">${name}</div>
+          <div class="value">${percent.toFixed(0)}%</div>
+          <div class="detail">${metric.using} of ${metric.reporting} instances | ${metric.configured} configured ${unit}</div>
+          <div class="protocol-bar"><span style="width:${percent}%"></span></div>
+        </div>
+      `;
+    }
+
     function renderBarList(entries, keyName) {
       if (!entries || entries.length === 0) return '<p class="loading" style="padding:1rem;">No data yet.</p>';
       const max = Math.max(...entries.map(e => e.instances));
@@ -419,6 +493,12 @@
         const adoption = latestBreakdown?.adoption ?? {
           vms: { reporting: latest.instances, using: null },
           apps: { reporting: latest.instances, using: null },
+        };
+        const protocols = latestBreakdown?.protocols ?? {
+          smb: { reporting: 0, using: null, configured: null },
+          nfs: { reporting: 0, using: null, configured: null },
+          iscsi: { reporting: 0, using: null, configured: null },
+          nvmeof: { reporting: 0, using: null, configured: null },
         };
         const utilization = latest.total_bytes > 0 ? (latest.used_bytes / latest.total_bytes) * 100 : 0;
         const versionNames = [...new Set(days.flatMap(day => Object.keys(day.versions ?? {})))].sort(compareVersionLabels);
@@ -487,6 +567,17 @@
               <canvas id="chart-versions"></canvas>
             </div>
           </div>
+
+          <section class="chart-container protocol-section">
+            <h2>Sharing Protocol Adoption</h2>
+            <p class="chart-note">Instances with at least one configured export; exact counts are privacy-filtered</p>
+            <div class="protocol-grid">
+              ${renderProtocolCard('SMB', protocols.smb, 'shares')}
+              ${renderProtocolCard('NFS', protocols.nfs, 'exports')}
+              ${renderProtocolCard('iSCSI', protocols.iscsi, 'LUNs')}
+              ${renderProtocolCard('NVMe-oF', protocols.nvmeof, 'namespaces')}
+            </div>
+          </section>
 
           <div class="breakdown">
             <div class="chart-container">
