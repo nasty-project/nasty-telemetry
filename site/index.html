@@ -650,9 +650,8 @@
           label: version === 'Other' ? 'Older / other' : version,
           data: days.map(day => day.instances > 0 ? ((day.versions?.[version] ?? 0) / day.instances) * 100 : 0),
           color: versionColors[index % versionColors.length],
-          fill: true,
-          borderWidth: 1.5,
-        })), { stacked: true, yMax: 100, yFormat: value => `${Math.round(value)}%` });
+          borderWidth: 2,
+        })), { yMax: 100, yFormat: value => `${Math.round(value)}%` });
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="error">Failed to load data: ${err.message}</p>`;
       }
