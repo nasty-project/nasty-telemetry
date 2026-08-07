@@ -4,6 +4,7 @@ const ACTIVE_AGE_DAYS = 3;
 const MAX_HISTORY_VERSIONS = 8;
 const MAX_CURRENT_VERSIONS = 12;
 const MIN_DISTRIBUTION_POPULATION = 10;
+const MIN_PROTOCOL_POPULATION = 5;
 const MIN_VISIBLE_CELL = 3;
 
 export interface Row {
@@ -147,7 +148,7 @@ function protocolAdoption(
 	const reporting = observed.length;
 	const using = observed.filter((row) => (row[key] ?? 0) > 0).length;
 	if (
-		reporting < MIN_DISTRIBUTION_POPULATION ||
+		reporting < MIN_PROTOCOL_POPULATION ||
 		using < MIN_VISIBLE_CELL ||
 		reporting - using < MIN_VISIBLE_CELL
 	) {

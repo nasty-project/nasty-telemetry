@@ -110,7 +110,7 @@ if !state.settings.get().await.telemetry_enabled {
 
 - Each instance contributes at most one row per UTC day; sending again replaces that day's row.
 - An instance is considered active for three days after its most recent report.
-- The public API exposes a rolling 90-day aggregate plus coarse current distributions. Protocol adoption requires at least 10 observed instances and suppresses cells smaller than 3. It never returns instance IDs or individual reports.
+- The public API exposes a rolling 90-day aggregate plus coarse current distributions. Protocol adoption requires at least 5 observed instances and suppresses cells smaller than 3. It never returns instance IDs or individual reports.
 - Daily per-instance rows are currently retained indefinitely. The planned retention model is to materialize permanent daily aggregates and delete per-instance rows after 90 days, preserving long-term trends without keeping long-term pseudonymous history.
 
 ## Abuse protection

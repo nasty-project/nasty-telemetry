@@ -192,4 +192,17 @@ describe("aggregateStats", () => {
 			nvmeof: { reporting: 0, using: null, configured: null },
 		});
 	});
+
+	it("publishes safe protocol counts before ten instances report", () => {
+		const rows = Array.from({ length: 6 }, (_, index) =>
+			report({
+				instance_id: `instance-${index}`,
+				reported_at: "2026-07-30",
+				smb_shares: index < 3 ? 1 : 0,
+			}),
+		);
+		const result = aggregateStats(rows, new Date("2026-07-30T12:00:00Z"));
+
+		expect(result.latest.protocols.smb).toEqual({ reporting: 6, using: 3, configured: 3 });
+	});
 });
