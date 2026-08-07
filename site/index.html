@@ -291,6 +291,7 @@
 
   <script>
     const API_BASE = 'https://nasty-telemetry.nasty-project.workers.dev/api';
+    const MIN_PROTOCOL_REPORTING = 5;
 
     function formatBytes(bytes) {
       if (bytes === 0) return '0 B';
@@ -437,13 +438,13 @@
     function renderProtocolCard(name, metric, unit) {
       if (!metric || metric.using === null) {
         const observed = metric?.reporting ?? 0;
-        const collecting = observed < 10;
+        const collecting = observed < MIN_PROTOCOL_REPORTING;
         return `
           <div class="protocol-card">
             <div class="name">${name}</div>
             <div class="value">${collecting ? 'Collecting' : 'Private'}</div>
             <div class="detail">${collecting
-              ? `${observed} upgraded instances reporting; shown after 10 are observed`
+              ? `${observed} upgraded instances reporting; shown after ${MIN_PROTOCOL_REPORTING} are observed`
               : `${observed} instances reporting; adoption hidden because a cohort is smaller than 3`}</div>
             <div class="protocol-bar"><span style="width:0%"></span></div>
           </div>
@@ -460,8 +461,8 @@
       `;
     }
 
-    function renderBarList(entries, keyName) {
-      if (!entries || entries.length === 0) return '<p class="loading" style="padding:1rem;">No data yet.</p>';
+    function renderBarList(entries, keyName, emptyMessage = 'No data yet.') {
+      if (!entries || entries.length === 0) return `<p class="loading" style="padding:1rem;">${escapeHtml(emptyMessage)}</p>`;
       const max = Math.max(...entries.map(e => e.instances));
       return `<div class="bar-list">${entries.map(e => {
         const pct = max > 0 ? (e.instances / max) * 100 : 0;
@@ -600,15 +601,15 @@
           <div class="distribution-grid">
             <div class="chart-container">
               <h2>Drives per instance</h2>
-              ${renderBarList(distributions.drives, 'label')}
+              ${renderBarList(distributions.drives, 'label', 'Hidden by the privacy filter until the reporting cohort and groups are large enough.')}
             </div>
             <div class="chart-container">
               <h2>Capacity per instance</h2>
-              ${renderBarList(distributions.capacity, 'label')}
+              ${renderBarList(distributions.capacity, 'label', 'Hidden by the privacy filter until the reporting cohort and groups are large enough.')}
             </div>
             <div class="chart-container">
               <h2>Storage utilization</h2>
-              ${renderBarList(distributions.utilization, 'label')}
+              ${renderBarList(distributions.utilization, 'label', 'Hidden by the privacy filter until the reporting cohort and groups are large enough.')}
             </div>
           </div>
 
