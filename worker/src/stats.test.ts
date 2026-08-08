@@ -65,7 +65,7 @@ describe("aggregateStats", () => {
 		expect(result.days.at(-1)?.versions).toEqual({ "0.0.15+": 1 });
 	});
 
-	it("hides distributions and adoption for small populations", () => {
+	it("publishes aggregate distributions and adoption for small populations", () => {
 		const result = aggregateStats(
 			[
 				report({
@@ -91,14 +91,27 @@ describe("aggregateStats", () => {
 			new Date("2026-07-30T12:00:00Z"),
 		);
 
-		expect(result.latest.distributions).toEqual({ drives: [], capacity: [], utilization: [] });
+		expect(result.latest.distributions).toEqual({
+			drives: [
+				{ label: "1", instances: 1 },
+				{ label: "9+", instances: 1 },
+			],
+			capacity: [
+				{ label: "<1 TiB", instances: 1 },
+				{ label: "100+ TiB", instances: 1 },
+			],
+			utilization: [
+				{ label: "<50%", instances: 1 },
+				{ label: "50%+", instances: 1 },
+			],
+		});
 		expect(result.latest.adoption).toEqual({
-			vms: { reporting: 1, using: null },
-			apps: { reporting: 2, using: null },
+			vms: { reporting: 1, using: 1 },
+			apps: { reporting: 2, using: 1 },
 		});
 	});
 
-	it("merges rare distribution cells and suppresses rare adoption counts", () => {
+	it("publishes every non-empty distribution and adoption bucket", () => {
 		const rows = Array.from({ length: 12 }, (_, index) =>
 			report({
 				instance_id: `instance-${index}`,
@@ -113,17 +126,19 @@ describe("aggregateStats", () => {
 		expect(result.latest.distributions.drives).toEqual([
 			{ label: "1", instances: 3 },
 			{ label: "2", instances: 3 },
-			{ label: "Other", instances: 6 },
+			{ label: "3-4", instances: 2 },
+			{ label: "5-8", instances: 2 },
+			{ label: "9+", instances: 2 },
 		]);
 		expect(result.latest.distributions.capacity).toEqual([{ label: "1-10 TiB", instances: 12 }]);
 		expect(result.latest.distributions.utilization).toEqual([{ label: "50%+", instances: 12 }]);
 		expect(result.latest.adoption).toEqual({
 			vms: { reporting: 12, using: 4 },
-			apps: { reporting: 12, using: null },
+			apps: { reporting: 12, using: 2 },
 		});
 	});
 
-	it("hides a distribution when its combined rare cell is still identifying", () => {
+	it("publishes one-instance aggregate buckets", () => {
 		const rows = Array.from({ length: 10 }, (_, index) =>
 			report({
 				instance_id: `instance-${index}`,
@@ -133,7 +148,10 @@ describe("aggregateStats", () => {
 		);
 		const result = aggregateStats(rows, new Date("2026-07-30T12:00:00Z"));
 
-		expect(result.latest.distributions.drives).toEqual([]);
+		expect(result.latest.distributions.drives).toEqual([
+			{ label: "1", instances: 9 },
+			{ label: "9+", instances: 1 },
+		]);
 	});
 
 	it("caps version history and current breakdown cardinality", () => {
@@ -172,7 +190,7 @@ describe("aggregateStats", () => {
 		expect(result.days.at(-1)?.versions["0.0.15+"]).toBe(1);
 	});
 
-	it("publishes protocol counts only with a privacy-safe observed cohort", () => {
+	it("publishes exact protocol aggregates", () => {
 		const rows = Array.from({ length: 12 }, (_, index) =>
 			report({
 				instance_id: `instance-${index}`,
@@ -188,12 +206,12 @@ describe("aggregateStats", () => {
 		expect(result.latest.protocols).toEqual({
 			smb: { reporting: 12, using: 5, configured: 10 },
 			nfs: { reporting: 12, using: 3, configured: 3 },
-			iscsi: { reporting: 12, using: null, configured: null },
-			nvmeof: { reporting: 0, using: null, configured: null },
+			iscsi: { reporting: 12, using: 2, configured: 2 },
+			nvmeof: { reporting: 0, using: 0, configured: 0 },
 		});
 	});
 
-	it("publishes safe protocol counts before ten instances report", () => {
+	it("publishes protocol counts before ten instances report", () => {
 		const rows = Array.from({ length: 6 }, (_, index) =>
 			report({
 				instance_id: `instance-${index}`,

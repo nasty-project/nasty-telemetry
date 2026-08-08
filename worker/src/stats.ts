@@ -3,9 +3,6 @@ const HISTORY_DAYS = 90;
 const ACTIVE_AGE_DAYS = 3;
 const MAX_HISTORY_VERSIONS = 8;
 const MAX_CURRENT_VERSIONS = 12;
-const MIN_DISTRIBUTION_POPULATION = 10;
-const MIN_PROTOCOL_POPULATION = 5;
-const MIN_VISIBLE_CELL = 3;
 
 export interface Row {
 	instance_id: string;
@@ -106,35 +103,14 @@ function distribution(
 		const bucket = buckets.findIndex(({ below }) => value(row) < below);
 		counts[bucket === -1 ? counts.length - 1 : bucket]++;
 	}
-	return buckets.map(({ label }, index) => ({ label, instances: counts[index] }));
+	return buckets
+		.map(({ label }, index) => ({ label, instances: counts[index] }))
+		.filter(({ instances }) => instances > 0);
 }
 
-function safeDistribution(
-	rows: Row[],
-	value: (row: Row) => number,
-	buckets: Array<{ label: string; below: number }>,
-): DistributionEntry[] {
-	if (rows.length < MIN_DISTRIBUTION_POPULATION) return [];
-	const entries = distribution(rows, value, buckets);
-	const visible = entries.filter(({ instances }) => instances >= MIN_VISIBLE_CELL);
-	const other = entries
-		.filter(({ instances }) => instances > 0 && instances < MIN_VISIBLE_CELL)
-		.reduce((sum, { instances }) => sum + instances, 0);
-	if (other > 0 && other < MIN_VISIBLE_CELL) return [];
-	if (other > 0) visible.push({ label: "Other", instances: other });
-	return visible;
-}
-
-function adoption(rows: Row[], key: "vms" | "apps"): { reporting: number; using: number | null } {
+function adoption(rows: Row[], key: "vms" | "apps"): { reporting: number; using: number } {
 	const reporting = rows.filter((row) => row[key] !== null).length;
 	const using = rows.filter((row) => row[key] !== null && row[key] > 0).length;
-	if (
-		reporting < MIN_DISTRIBUTION_POPULATION ||
-		using < MIN_VISIBLE_CELL ||
-		reporting - using < MIN_VISIBLE_CELL
-	) {
-		return { reporting, using: null };
-	}
 	return { reporting, using };
 }
 
@@ -143,17 +119,10 @@ type ProtocolKey = "smb_shares" | "nfs_exports" | "iscsi_luns" | "nvmeof_namespa
 function protocolAdoption(
 	rows: Row[],
 	key: ProtocolKey,
-): { reporting: number; using: number | null; configured: number | null } {
+): { reporting: number; using: number; configured: number } {
 	const observed = rows.filter((row) => row[key] !== null);
 	const reporting = observed.length;
 	const using = observed.filter((row) => (row[key] ?? 0) > 0).length;
-	if (
-		reporting < MIN_PROTOCOL_POPULATION ||
-		using < MIN_VISIBLE_CELL ||
-		reporting - using < MIN_VISIBLE_CELL
-	) {
-		return { reporting, using: null, configured: null };
-	}
 	return {
 		reporting,
 		using,
@@ -174,10 +143,10 @@ export function aggregateStats(rows: Row[], now: Date) {
 					apps: { reporting: 0, using: 0 },
 				},
 				protocols: {
-					smb: { reporting: 0, using: null, configured: null },
-					nfs: { reporting: 0, using: null, configured: null },
-					iscsi: { reporting: 0, using: null, configured: null },
-					nvmeof: { reporting: 0, using: null, configured: null },
+					smb: { reporting: 0, using: 0, configured: 0 },
+					nfs: { reporting: 0, using: 0, configured: 0 },
+					iscsi: { reporting: 0, using: 0, configured: 0 },
+					nvmeof: { reporting: 0, using: 0, configured: 0 },
 				},
 			},
 		};
@@ -263,21 +232,21 @@ export function aggregateStats(rows: Row[], now: Date) {
 				"arch",
 			),
 			distributions: {
-				drives: safeDistribution(latestRows, (row) => row.drives, [
+				drives: distribution(latestRows, (row) => row.drives, [
 					{ label: "1", below: 2 },
 					{ label: "2", below: 3 },
 					{ label: "3-4", below: 5 },
 					{ label: "5-8", below: 9 },
 					{ label: "9+", below: Number.POSITIVE_INFINITY },
 				]),
-				capacity: safeDistribution(latestRows, (row) => row.total_bytes / tebibyte, [
+				capacity: distribution(latestRows, (row) => row.total_bytes / tebibyte, [
 					{ label: "<1 TiB", below: 1 },
 					{ label: "1-10 TiB", below: 10 },
 					{ label: "10-50 TiB", below: 50 },
 					{ label: "50-100 TiB", below: 100 },
 					{ label: "100+ TiB", below: Number.POSITIVE_INFINITY },
 				]),
-				utilization: safeDistribution(
+				utilization: distribution(
 					latestRows,
 					(row) => (row.total_bytes > 0 ? (row.used_bytes / row.total_bytes) * 100 : 0),
 					[
