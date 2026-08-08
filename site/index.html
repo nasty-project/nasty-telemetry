@@ -291,7 +291,6 @@
 
   <script>
     const API_BASE = 'https://nasty-telemetry.nasty-project.workers.dev/api';
-    const MIN_PROTOCOL_REPORTING = 5;
 
     function formatBytes(bytes) {
       if (bytes === 0) return '0 B';
@@ -431,21 +430,16 @@
 
     function adoptionDetail(metric, noun) {
       if (!metric?.reporting) return 'No observed reports';
-      if (metric.using === null) return 'Adoption hidden for small cohorts';
       return `${Math.round((metric.using / metric.reporting) * 100)}% of reporting instances use ${noun}`;
     }
 
     function renderProtocolCard(name, metric, unit) {
-      if (!metric || metric.using === null) {
-        const observed = metric?.reporting ?? 0;
-        const collecting = observed < MIN_PROTOCOL_REPORTING;
+      if (!metric?.reporting) {
         return `
           <div class="protocol-card">
             <div class="name">${name}</div>
-            <div class="value">${collecting ? 'Collecting' : 'Private'}</div>
-            <div class="detail">${collecting
-              ? `${observed} upgraded instances reporting; shown after ${MIN_PROTOCOL_REPORTING} are observed`
-              : `${observed} instances reporting; adoption hidden because a cohort is smaller than 3`}</div>
+            <div class="value">No reports</div>
+            <div class="detail">No upgraded instances have reported this metric yet</div>
             <div class="protocol-bar"><span style="width:0%"></span></div>
           </div>
         `;
@@ -461,8 +455,8 @@
       `;
     }
 
-    function renderBarList(entries, keyName, emptyMessage = 'No data yet.') {
-      if (!entries || entries.length === 0) return `<p class="loading" style="padding:1rem;">${escapeHtml(emptyMessage)}</p>`;
+    function renderBarList(entries, keyName) {
+      if (!entries || entries.length === 0) return '<p class="loading" style="padding:1rem;">No data yet.</p>';
       const max = Math.max(...entries.map(e => e.instances));
       return `<div class="bar-list">${entries.map(e => {
         const pct = max > 0 ? (e.instances / max) * 100 : 0;
@@ -493,14 +487,14 @@
         const arches = latestBreakdown?.arches ?? [];
         const distributions = latestBreakdown?.distributions ?? { drives: [], capacity: [], utilization: [] };
         const adoption = latestBreakdown?.adoption ?? {
-          vms: { reporting: latest.instances, using: null },
-          apps: { reporting: latest.instances, using: null },
+          vms: { reporting: latest.instances, using: 0 },
+          apps: { reporting: latest.instances, using: 0 },
         };
         const protocols = latestBreakdown?.protocols ?? {
-          smb: { reporting: 0, using: null, configured: null },
-          nfs: { reporting: 0, using: null, configured: null },
-          iscsi: { reporting: 0, using: null, configured: null },
-          nvmeof: { reporting: 0, using: null, configured: null },
+          smb: { reporting: 0, using: 0, configured: 0 },
+          nfs: { reporting: 0, using: 0, configured: 0 },
+          iscsi: { reporting: 0, using: 0, configured: 0 },
+          nvmeof: { reporting: 0, using: 0, configured: 0 },
         };
         const utilization = latest.total_bytes > 0 ? (latest.used_bytes / latest.total_bytes) * 100 : 0;
         const versionNames = [...new Set(days.flatMap(day => Object.keys(day.versions ?? {})))].sort(compareVersionLabels);
@@ -572,7 +566,7 @@
 
           <section class="chart-container protocol-section">
             <h2>Sharing Protocol Adoption</h2>
-            <p class="chart-note">Instances with at least one configured export; exact counts are privacy-filtered</p>
+            <p class="chart-note">Instances with at least one configured export</p>
             <div class="protocol-grid">
               ${renderProtocolCard('SMB', protocols.smb, 'shares')}
               ${renderProtocolCard('NFS', protocols.nfs, 'exports')}
@@ -601,15 +595,15 @@
           <div class="distribution-grid">
             <div class="chart-container">
               <h2>Drives per instance</h2>
-              ${renderBarList(distributions.drives, 'label', 'Hidden by the privacy filter until the reporting cohort and groups are large enough.')}
+              ${renderBarList(distributions.drives, 'label')}
             </div>
             <div class="chart-container">
               <h2>Capacity per instance</h2>
-              ${renderBarList(distributions.capacity, 'label', 'Hidden by the privacy filter until the reporting cohort and groups are large enough.')}
+              ${renderBarList(distributions.capacity, 'label')}
             </div>
             <div class="chart-container">
               <h2>Storage utilization</h2>
-              ${renderBarList(distributions.utilization, 'label', 'Hidden by the privacy filter until the reporting cohort and groups are large enough.')}
+              ${renderBarList(distributions.utilization, 'label')}
             </div>
           </div>
 
